@@ -14,10 +14,21 @@ rm -rf batch_files/*
 rm -rf logs/*
 
 # Get file settings
-varname=mslp
+plevdata=1
+sfcdata=0
+# If pressure level field
+if [[ ${plevdata} -eq 1 ]];then
+    varn_=gph # goh
+    plev=500
+    varname=${varn_}${plev}hPa
+fi
+if [[ ${sfcdata} -eq 1 ]];then
+    varname=sst # mslp, sst
+fi
+#varname=sst # mslp, sst
 
-initialcondition="10" # 01 .. 12
-startday="09" # 01, 09, 17, 25
+initialcondition="11" # 01 .. 12
+startday="01" # 01, 09, 17, 25
 
 extractregion=1
 if [[ ${extractregion} -eq 1 ]];then
@@ -48,6 +59,12 @@ outdir=${topdir}/${varname}/6hourly/rawdata/
 if [[ ${varname} == mslp ]];then
     param=151.128
 fi
+if [[ ${varname} == sst ]];then
+    param=34.128
+fi
+if [[ ${varname} == gph500hPa ]];then
+    param=129.128
+fi
 
 # Calculate steps work out for one year
 # Output value of python pandas script:x
@@ -62,7 +79,7 @@ if [[ ${initialcondition} == "10" ]];then
     fi
     if [[ ${startday} == "17" ]];then
         startstep=1080
-        endstep=3334
+        endstep=3234
     fi
     if [[ ${startday} == "25" ]];then
         startstep=888
@@ -111,6 +128,7 @@ for year in {1994..2010}; do
     for sd in ${startday}; do
         echo "#!/bin/ksh" > batch_files/f_${i}.ksh
         chmod u+x batch_files/f_${i}.ksh
+        if [[ ${sfcdata} -eq 1 ]];then    
 cat > batch_files/f_${i}.py << EOF
 from ecmwfapi import ECMWFDataServer
 server = ECMWFDataServer()
@@ -134,6 +152,34 @@ server.retrieve({
     "target": "${outdir}${year}${initialcondition}${startday}_7ens_DJF.grib",
 })
 EOF
+        fi
+        if [[ ${plevdata} -eq 1 ]];then
+cat > batch_files/f_${i}.py << EOF
+from ecmwfapi import ECMWFDataServer
+server = ECMWFDataServer()
+
+server.retrieve({
+    "class": "c3",
+    "dataset": "c3s_seasonal",
+    "date": "${year}-${initialcondition}-${startday}",
+    "expver": "1",
+    "levelist": "${plev}",
+    "levtype": "pl",
+    "method": "1",
+    "number": "101/102/103/104/105/106/107",
+    "origin": "egrr",
+    "param": "${param}",
+    "step": "${startstep}/to/${endstep}/by/6",
+    "stream": "mmsf",
+    "system": "12",
+    "time": "00:00:00",
+    "type": "fc",
+    "format": "grib",
+    "target": "${outdir}${year}${initialcondition}${startday}_7ens_DJF.grib",
+})
+EOF
+        fi
+
         echo "python batch_files/f_${i}.py" >> batch_files/f_${i}.ksh
         echo "grib_to_netcdf -R 18500101 -o ${outdir}${year}${initialcondition}${startday}_7ens_DJF.nc ${outdir}${year}${initialcondition}${startday}_7ens_DJF.grib" >> batch_files/f_${i}.ksh
         echo "rm -rf ${outdir}${year}${initialcondition}${startday}_7ens_DJF.grib" >> batch_files/f_${i}.ksh
